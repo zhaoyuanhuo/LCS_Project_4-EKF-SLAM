@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 class EKF_SLAM():
     def __init__(self, init_mu, init_P, dt, W, V, n):
@@ -41,7 +42,13 @@ class EKF_SLAM():
         Returns:
             x_next: A numpy array of size (3+2*n, ). The state at next time step
         """
+        x_next = np.copy(x)
 
+        X_t, Y_t, Phi_t = x[0:3]
+        A_t = np.array([[np.cos(Phi_t), -np.sin(Phi_t), 0.0],
+                        [np.sin(Phi_t), np.cos(Phi_t), 0.0],
+                        [0.0, 0.0, 1.0]])
+        x_next[0:3] = x[0:3] + self.dt * A_t @ u
         return x_next
 
 
@@ -56,6 +63,27 @@ class EKF_SLAM():
         Returns:
             y: A numpy array of size (2*n, ). The sensor measurement.
         """
+        # extract info from current state
+        Pt = x[0:2] # current position
+
+        x_idx = range(3, len(x), 2)
+        y_idx = range(4, len(x), 2)
+        Mx = x[x_idx]
+        My = x[y_idx]
+        if (len(Mx) != len(My)) or (len(Mx) != (len(x)-3)/2):
+            print(len(x)-3)
+            print(len(Mx))
+            print(len(My))
+        M = np.vstack((Mx, My))
+
+        # initialize measurement array
+        y = np.zeros(self.n*2) # measurement
+
+        # fill in positional and angular measurements
+        for k in range(self.n):
+            diff = M[:, k]-Pt
+            y[k] = np.linalg.norm(diff)
+            y[k+self.n] = math.atan2(diff[1], diff[0])
 
         return y
 
@@ -71,6 +99,11 @@ class EKF_SLAM():
         Returns:
             F: A numpy array of size (3+2*n, 3+2*n). The jacobian of f evaluated at x_k.
         """
+        xdot, ydot = u[0:2]
+        theta = self.mu[2]
+        F = np.identity(self.n*2+3)
+        F[0][2] = -self.dt * (xdot*np.sin(theta) + ydot*np.cos(theta))
+        F[1][2] = self.dt * (xdot*np.cos(theta) - ydot*np.sin(theta))
 
         return F
 
@@ -85,10 +118,33 @@ class EKF_SLAM():
         Returns:
             H: A numpy array of size (2*n, 3+2*n). The jacobian of h evaluated at x_k.
         """
+        Xr, Yr = self.mu[0:2]
+        x_idx = range(3, len(self.mu), 2)
+        y_idx = range(4, len(self.mu), 2)
+        Mx = self.mu[x_idx]
+        My = self.mu[y_idx]
 
-        # distance sensor
+        H = np.zeros((2*self.n, 3+2*self.n))
 
-        # bearing sensor
+        d_vec = np.zeros(self.n)
+        # 0. compute ds
+        for k in range(self.n):
+            d_vec[k] = np.sqrt((Xr-Mx[k])*(Xr-Mx[k]) + (Yr-My[k])*(Yr-My[k]))
+
+        # 1. first 3 cols
+        for k in range(self.n):
+            H[k][0] = (Xr-Mx[k])/d_vec[k]
+            H[k][1] = (Yr-My[k])/d_vec[k]
+            H[k+self.n][0] = (My[k]-Yr)/(d_vec[k]**2)
+            H[k+self.n][1] = (Xr-Mx[k])/(d_vec[k]**2)
+            H[k+self.n][2] = -1.0
+
+        # 2. remaining 2n cols
+        for k in range(self.n):
+            H[k][3+k*2] = (Mx[k]-Xr)/d_vec[k]
+            H[k][3+k*2+1] = (My[k]-Yr)/d_vec[k]
+            H[k+self.n][3+k*2] = (Yr-My[k])/(d_vec[k]**2)
+            H[k+self.n][3+k*2+1] = (Mx[k]-Xr)/(d_vec[k]**2)
 
         return H
 
@@ -108,19 +164,26 @@ class EKF_SLAM():
         """
 
         # compute F and H matrix
+        Ak = self._compute_F(u)
+        Ck = self._compute_H()
 
-        # last_mu = self.mu
+        last_mu = self.mu
         #***************** Predict step *****************#
         # predict the state
+        x_bar = self._f(last_mu, u)
 
         # predict the error covariance
+        P_bar = Ak@self.P@Ak.T + self.W
 
         #***************** Correct step *****************#
         # compute the Kalman gain
+        Lk = P_bar @ Ck.T @ np.linalg.inv(Ck @ P_bar @ Ck.T + self.V)
 
         # update estimation with new measurement
+        self.mu = x_bar + Lk @ (y - self._h(x_bar))
 
         # update the error covariance
+        self.P = (np.identity(len(P_bar)) - Lk @ Ck) @ P_bar
 
         return self.mu, self.P
 
