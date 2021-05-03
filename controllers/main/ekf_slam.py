@@ -45,10 +45,10 @@ class EKF_SLAM():
         x_next = np.copy(x)
 
         X_t, Y_t, Phi_t = x[0:3]
-        A_t = np.array([[np.cos(Phi_t), -np.sin(Phi_t), 0.0],
-                        [np.sin(Phi_t), np.cos(Phi_t), 0.0],
-                        [0.0, 0.0, 1.0]])
-        x_next[0:3] = x[0:3] + self.dt * A_t @ u
+        A_t = np.array([[np.cos(Phi_t)*self.dt, -np.sin(Phi_t)*self.dt, 0.0],
+                        [np.sin(Phi_t)*self.dt, np.cos(Phi_t)*self.dt, 0.0],
+                        [0.0, 0.0, self.dt]])
+        x_next[0:3] = x[0:3] + A_t @ u
         return x_next
 
 
@@ -65,15 +65,14 @@ class EKF_SLAM():
         """
         # extract info from current state
         Pt = x[0:2] # current position
+        Phi = x[2]
 
         x_idx = range(3, len(x), 2)
         y_idx = range(4, len(x), 2)
         Mx = x[x_idx]
         My = x[y_idx]
-        if (len(Mx) != len(My)) or (len(Mx) != (len(x)-3)/2):
-            print(len(x)-3)
-            print(len(Mx))
-            print(len(My))
+        assert len(Mx)==len(My), "x y length should be equal!"
+        assert len(Mx)==(len(x)-3)/2, "not fully extracted feature!"
         M = np.vstack((Mx, My))
 
         # initialize measurement array
@@ -83,7 +82,7 @@ class EKF_SLAM():
         for k in range(self.n):
             diff = M[:, k]-Pt
             y[k] = np.linalg.norm(diff)
-            y[k+self.n] = math.atan2(diff[1], diff[0])
+            y[k+self.n] = math.atan2(diff[1], diff[0])-Phi
 
         return y
 
@@ -181,6 +180,7 @@ class EKF_SLAM():
 
         # update estimation with new measurement
         self.mu = x_bar + Lk @ (y - self._h(x_bar))
+        self.mu[2] = self._wrap_to_pi(self.mu[2])
 
         # update the error covariance
         self.P = (np.identity(len(P_bar)) - Lk @ Ck) @ P_bar
@@ -189,7 +189,10 @@ class EKF_SLAM():
 
 
     def _wrap_to_pi(self, angle):
+        angle_old = angle
         angle = angle - 2*np.pi*np.floor((angle+np.pi )/(2*np.pi))
+        if angle_old!=angle:
+            print("changed from ", angle_old, " to ", angle)
         return angle
 
 
