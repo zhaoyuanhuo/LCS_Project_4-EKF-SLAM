@@ -45,10 +45,12 @@ class EKF_SLAM():
         x_next = np.copy(x)
 
         X_t, Y_t, Phi_t = x[0:3]
+        Phi_t = self._wrap_to_pi(Phi_t)
         A_t = np.array([[np.cos(Phi_t)*self.dt, -np.sin(Phi_t)*self.dt, 0.0],
                         [np.sin(Phi_t)*self.dt, np.cos(Phi_t)*self.dt, 0.0],
                         [0.0, 0.0, self.dt]])
         x_next[0:3] = x[0:3] + A_t @ u
+        x_next[2] = self._wrap_to_pi(x_next[2])
         return x_next
 
 
@@ -65,7 +67,7 @@ class EKF_SLAM():
         """
         # extract info from current state
         Pt = x[0:2] # current position
-        Phi = x[2]
+        theta = x[2]
 
         x_idx = range(3, len(x), 2)
         y_idx = range(4, len(x), 2)
@@ -82,8 +84,8 @@ class EKF_SLAM():
         for k in range(self.n):
             diff = M[:, k]-Pt
             y[k] = np.linalg.norm(diff)
-            y[k+self.n] = math.atan2(diff[1], diff[0])-Phi
-
+            y[k+self.n] = math.atan2(diff[1], diff[0])-theta
+        # ?? wrap angle?
         return y
 
 
@@ -100,7 +102,7 @@ class EKF_SLAM():
         """
         xdot, ydot = u[0:2]
         theta = self.mu[2]
-        F = np.identity(self.n*2+3)
+        F = np.eye(self.n*2+3)
         F[0][2] = -self.dt * (xdot*np.sin(theta) + ydot*np.cos(theta))
         F[1][2] = self.dt * (xdot*np.cos(theta) - ydot*np.sin(theta))
 
@@ -128,7 +130,7 @@ class EKF_SLAM():
         d_vec = np.zeros(self.n)
         # 0. compute ds
         for k in range(self.n):
-            d_vec[k] = np.sqrt((Xr-Mx[k])*(Xr-Mx[k]) + (Yr-My[k])*(Yr-My[k]))
+            d_vec[k] = np.sqrt((Xr-Mx[k])**2 + (Yr-My[k])**2)
 
         # 1. first 3 cols
         for k in range(self.n):
@@ -163,8 +165,8 @@ class EKF_SLAM():
         """
 
         # compute F and H matrix
-        Ak = self._compute_F(u)
         Ck = self._compute_H()
+        Ak = self._compute_F(u)
 
         last_mu = self.mu
         #***************** Predict step *****************#
@@ -172,7 +174,7 @@ class EKF_SLAM():
         x_bar = self._f(last_mu, u)
 
         # predict the error covariance
-        P_bar = Ak@self.P@Ak.T + self.W
+        P_bar = Ak @ self.P @ Ak.T + self.W
 
         #***************** Correct step *****************#
         # compute the Kalman gain
@@ -183,10 +185,12 @@ class EKF_SLAM():
         self.mu[2] = self._wrap_to_pi(self.mu[2])
 
         # update the error covariance
-        self.P = (np.identity(len(P_bar)) - Lk @ Ck) @ P_bar
+        self.P = (np.eye(len(P_bar)) - Lk @ Ck) @ P_bar
 
         return self.mu, self.P
 
+    def wrap_angle(self, theta):
+        return (theta + 2 * math.pi) % (2 * math.pi)
 
     def _wrap_to_pi(self, angle):
         angle_old = angle
@@ -247,6 +251,9 @@ if __name__ == '__main__':
             # apply EKF SLAM
             mu_est, _ = slam.predict_and_correct(y, u)
             mu_ekf[:,i] = mu_est
+
+            # debugger
+            # print(t, ": ", mu_est[2])
 
 
     plt.figure(1, figsize=(10,6))
