@@ -85,7 +85,6 @@ class EKF_SLAM():
             diff = M[:, k]-Pt
             y[k] = np.linalg.norm(diff)
             y[k+self.n] = math.atan2(diff[1], diff[0])-theta
-        # ?? wrap angle?
         return y
 
 
@@ -109,7 +108,7 @@ class EKF_SLAM():
         return F
 
 
-    def _compute_H(self):
+    def _compute_H(self, x_bar):
         """Compute Jacobian of h
         
         You will use self.mu in this function.
@@ -119,11 +118,17 @@ class EKF_SLAM():
         Returns:
             H: A numpy array of size (2*n, 3+2*n). The jacobian of h evaluated at x_k.
         """
-        Xr, Yr = self.mu[0:2]
+        # Xr, Yr = self.mu[0:2]
+        # x_idx = range(3, len(self.mu), 2)
+        # y_idx = range(4, len(self.mu), 2)
+        # Mx = self.mu[x_idx]
+        # My = self.mu[y_idx]
+
+        Xr, Yr = x_bar[0:2]
         x_idx = range(3, len(self.mu), 2)
         y_idx = range(4, len(self.mu), 2)
-        Mx = self.mu[x_idx]
-        My = self.mu[y_idx]
+        Mx = x_bar[x_idx]
+        My = x_bar[y_idx]
 
         H = np.zeros((2*self.n, 3+2*self.n))
 
@@ -131,7 +136,6 @@ class EKF_SLAM():
         # 0. compute ds
         for k in range(self.n):
             d_vec[k] = np.sqrt((Xr-Mx[k])**2 + (Yr-My[k])**2)
-
         # 1. first 3 cols
         for k in range(self.n):
             H[k][0] = (Xr-Mx[k])/d_vec[k]
@@ -146,7 +150,8 @@ class EKF_SLAM():
             H[k][3+k*2+1] = (My[k]-Yr)/d_vec[k]
             H[k+self.n][3+k*2] = (Yr-My[k])/(d_vec[k]**2)
             H[k+self.n][3+k*2+1] = (Mx[k]-Xr)/(d_vec[k]**2)
-
+        if (np.linalg.matrix_rank(H)<16):
+            print(np.linalg.matrix_rank(H))
         return H
 
 
@@ -165,7 +170,6 @@ class EKF_SLAM():
         """
 
         # compute F and H matrix
-        Ck = self._compute_H()
         Ak = self._compute_F(u)
 
         last_mu = self.mu
@@ -178,10 +182,16 @@ class EKF_SLAM():
 
         #***************** Correct step *****************#
         # compute the Kalman gain
+        Ck = self._compute_H(x_bar)
         Lk = P_bar @ Ck.T @ np.linalg.inv(Ck @ P_bar @ Ck.T + self.V)
 
         # update estimation with new measurement
-        self.mu = x_bar + Lk @ (y - self._h(x_bar))
+        diff = y - self._h(x_bar)
+        for k in range(n, len(diff)):
+            diff[k] = self._wrap_to_pi(y[k] - self._h(x_bar)[k])
+
+        self.mu = x_bar + Lk @ diff
+        # self.mu = x_bar + Lk @ (y - self._h(x_bar))
         self.mu[2] = self._wrap_to_pi(self.mu[2])
 
         # update the error covariance
