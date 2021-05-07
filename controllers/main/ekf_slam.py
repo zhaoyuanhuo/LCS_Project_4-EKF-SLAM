@@ -187,7 +187,7 @@ class EKF_SLAM():
 
         # update estimation with new measurement
         diff = y - self._h(x_bar)
-        for k in range(n, len(diff)):
+        for k in range(self.n, len(diff)):
             diff[k] = self._wrap_to_pi(y[k] - self._h(x_bar)[k])
 
         self.mu = x_bar + Lk @ diff
@@ -205,8 +205,8 @@ class EKF_SLAM():
     def _wrap_to_pi(self, angle):
         angle_old = angle
         angle = angle - 2*np.pi*np.floor((angle+np.pi )/(2*np.pi))
-        if angle_old!=angle:
-            print("changed from ", angle_old, " to ", angle)
+        # if angle_old!=angle:
+        #     print("changed from ", angle_old, " to ", angle)
         return angle
 
 
