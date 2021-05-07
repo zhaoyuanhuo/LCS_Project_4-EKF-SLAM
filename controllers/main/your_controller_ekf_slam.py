@@ -54,7 +54,7 @@ class CustomController(BaseController):
         self.sum_error_psi = 0.0
         self.error_psi_old = 0.0
 
-        self.long_look_ahead = 550
+        self.long_look_ahead = 400
         self.lat_look_ahead = 80
 
         # lateral
@@ -250,9 +250,9 @@ class CustomController(BaseController):
 
             self.N = 300
             self.Q = np.array([[0.0001, 0, 0, 0],
-                               [0, 0.0001, 0, 0],
+                               [0, 0.001, 0, 0],
                                [0, 0, 0.001, 0],
-                               [0, 0, 0, 0.0005]])
+                               [0, 0, 0, 0.005]])
             self.R = np.array([[6, 0],
                                [0, 0.0001]])
             # check if need to decelerate
@@ -264,85 +264,85 @@ class CustomController(BaseController):
             Y_long_next_ = trajectory[idx_next][1]
             psi_long_ = math.atan2(Y_long_next_ - Y, X_long_next_ - X)
             error_psi_ = self.wrapAngle(psi_long_) - self.wrapAngle(psi)
-            if np.abs(error_psi_) > 14 * math.pi / 180:
-                # print("dec!", np.abs(error_psi_))
-                longi_scale = 0.5
+            # if np.abs(error_psi_) > 14 * math.pi / 180:
+            #     # print("dec!", np.abs(error_psi_))
+            #     longi_scale = 1.0
         elif np.abs(error_psi_long) < 30 * math.pi / 180:  # curb
             # print("small angle is", np.abs(error_psi_long)*180/math.pi)
             self.cnt_small_angle += 1
             self.XTE_small_angle += XTE
 
-            longi_scale = 0.8
+            longi_scale = 1.0
             self.kd_x = 2.0
             self.lat_look_ahead = 100
 
             self.N = 250
             self.Q = np.array([[0.0001, 0, 0, 0],
-                               [0, 0.000001, 0, 0],
+                               [0, 0.00001, 0, 0],
                                [0, 0, 0.001, 0],
-                               [0, 0, 0, 0.00001]])
+                               [0, 0, 0, 0.0001]])
             self.R = np.array([[3, 0],
                                [0, 0.0001]])
         elif np.abs(error_psi_long) < 45 * math.pi / 180:  # medium
             self.cnt_medium_angle += 1
             self.XTE_medium_angle += XTE
 
-            longi_scale = 0.1
+            longi_scale = 0.5
             self.kd_x = 0.0
-            self.lat_look_ahead = 150
+            self.lat_look_ahead = 130
 
             self.N = 250
             self.Q = np.array([[0.0001, 0, 0, 0],
-                               [0, 0.000001, 0, 0],
+                               [0, 0.00001, 0, 0],
                                [0, 0, 0.001, 0],
-                               [0, 0, 0, 0.00001]])
+                               [0, 0, 0, 0.0001]])
             self.R = np.array([[3, 0],
                                [0, 0.0001]])
         elif np.abs(error_psi_long) < 55 * math.pi / 180:  # medium
             self.cnt_medium_angle += 1
             self.XTE_medium_angle += XTE
 
-            longi_scale = 0.1
+            longi_scale = 0.5
             self.kd_x = 0.0
-            self.lat_look_ahead = 175
+            self.lat_look_ahead = 140
 
             self.N = 250
             self.Q = np.array([[0.0001, 0, 0, 0],
-                               [0, 0.000001, 0, 0],
+                               [0, 0.00001, 0, 0],
                                [0, 0, 0.001, 0],
-                               [0, 0, 0, 0.00001]])
+                               [0, 0, 0, 0.0001]])
             self.R = np.array([[3, 0],
                                [0, 0.0001]])
         elif np.abs(error_psi_long) < 85 * math.pi / 180:  # curb
-            # print("large angle is", np.abs(error_psi_long)*180/math.pi)
+            print("large angle is", np.abs(error_psi_long)*180/math.pi)
             self.cnt_large_angle += 1
             self.XTE_large_angle += XTE
 
-            longi_scale = 0.1
+            longi_scale = 0.5
             self.kd_x = 0.0
-            self.lat_look_ahead = 200
+            self.lat_look_ahead = 150
 
             self.N = 250
             self.Q = np.array([[0.0001, 0, 0, 0],
-                               [0, 0.000001, 0, 0],
+                               [0, 0.00001, 0, 0],
                                [0, 0, 0.001, 0],
-                               [0, 0, 0, 0.00001]])
+                               [0, 0, 0, 0.0001]])
             self.R = np.array([[3, 0],
                                [0, 0.0001]])
         else:
-            # print("super large angle is", np.abs(error_psi_long)*180/math.pi)
+            print("super large angle is", np.abs(error_psi_long)*180/math.pi)
             self.cnt_super_large_angle += 1
             self.XTE_super_large_angle += XTE
 
-            longi_scale = 0.1
+            longi_scale = 0.5
             self.kd_x = 0.0
-            self.lat_look_ahead = 200
+            self.lat_look_ahead = 155
 
             self.N = 250
             self.Q = np.array([[0.0001, 0, 0, 0],
-                               [0, 0.000001, 0, 0],
+                               [0, 0.00001, 0, 0],
                                [0, 0, 0.001, 0],
-                               [0, 0, 0, 0.00001]])
+                               [0, 0, 0, 0.0001]])
             self.R = np.array([[3, 0],
                                [0, 0.0001]])
         # ---------------|Lateral Controller|-------------------------
@@ -400,6 +400,8 @@ class CustomController(BaseController):
         # riccati backward pass
         S = np.copy(self.Q)
         K = np.zeros((2, 4))
+
+        first_ts = False
         for i in range(self.N):
             K = inv(self.R + B.T @ S @ B) @ B.T @ S @ A
             S = (A - B @ K).T @ S @ (A - B @ K) + self.Q + K.T @ self.R @ K
@@ -410,6 +412,7 @@ class CustomController(BaseController):
         delta = clamp(delta, self.delta_min, self.delta_max)
         # print(delta)
         if self.delta_last == -100.0:
+            first_ts = True
             print("first timestep")
             self.delta_last = delta
         else:
@@ -436,6 +439,12 @@ class CustomController(BaseController):
         F = self.kp_x * error_x + \
             self.ki_x * self.sum_error_x + \
             self.kd_x * (error_x - self.error_x_old) / delT
+        diff = abs(F)-600000
+        if not first_ts:
+            if F<0 and diff>0:
+                break_scale = clamp(diff/15000, 0, 1)
+                print(xdot, " " , abs(F), " ", break_scale)
+                driver.setBrakeIntensity(break_scale)
         F = clamp(F, self.F_min, self.F_max)
         # Setting brake intensity is enabled by passing
         # the driver object, which is used to provide inputs
